@@ -44,9 +44,6 @@ bootstrap:
     - host all all 0.0.0.0/0 md5
     - local all all trust
 
-  # users — не указываем явно, Patroni создаст пользователей
-  # из PATRONI_SUPERUSER_USERNAME и PATRONI_REPLICATION_USERNAME автоматически
-
 # Секция authentication убрана полностью —
 # Patroni берёт имена и пароли пользователей из переменных окружения:
 # PATRONI_SUPERUSER_USERNAME, PATRONI_SUPERUSER_PASSWORD
