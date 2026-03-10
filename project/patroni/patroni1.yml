@@ -1,0 +1,67 @@
+scope: pg_cluster
+namespace: /db/
+name: pg-node-1
+
+restapi:
+  listen: 0.0.0.0:8008
+  connect_address: 172.20.0.11:8008
+
+etcd3:
+  hosts:
+    - 172.20.0.21:2379
+    - 172.20.0.22:2379
+    - 172.20.0.23:2379
+
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      parameters:
+        wal_level: replica
+        hot_standby: "on"
+        wal_keep_size: 128
+        max_wal_senders: 10
+        max_replication_slots: 10
+        wal_log_hints: "on"
+        logging_collector: "on"
+        log_directory: /var/log/postgresql
+        log_filename: postgresql-%Y-%m-%d_%H%M%S.log
+        archive_mode: "on"
+        archive_command: "/bin/true"
+        shared_preload_libraries: pg_stat_statements
+
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+
+  pg_hba:
+    - host replication replicator 172.20.0.0/24 md5
+    - host all all 0.0.0.0/0 md5
+    - local all all trust
+
+# Секция authentication убрана полностью —
+# Patroni берёт имена и пароли пользователей из переменных окружения:
+# PATRONI_SUPERUSER_USERNAME, PATRONI_SUPERUSER_PASSWORD
+# PATRONI_REPLICATION_USERNAME, PATRONI_REPLICATION_PASSWORD
+# PATRONI_REWIND_USERNAME, PATRONI_REWIND_PASSWORD
+
+postgresql:
+  listen: 0.0.0.0:5432
+  connect_address: 172.20.0.11:5432
+  data_dir: /var/lib/postgresql/15/data
+  bin_dir: /usr/lib/postgresql/15/bin
+  pgpass: /tmp/pgpass
+
+  parameters:
+    unix_socket_directories: /var/run/postgresql
+
+tags:
+  nofailover: false
+  noloadbalance: false
+  clonefrom: false
+  nosync: false
