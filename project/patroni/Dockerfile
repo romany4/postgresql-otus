@@ -2,7 +2,7 @@ FROM debian:trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Добавляем PostgreSQL для Debian 13
+# Добавляем официальный репозиторий PostgreSQL для Debian 13 (trixie)
 RUN apt-get update && apt-get install -y curl ca-certificates gnupg lsb-release \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
        | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg \
