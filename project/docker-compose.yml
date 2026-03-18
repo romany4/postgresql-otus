@@ -1,0 +1,324 @@
+networks:
+  pg_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+volumes:
+  etcd1_data:
+  etcd2_data:
+  etcd3_data:
+  pg1_data:
+  pg2_data:
+  pg3_data:
+
+services:
+  # ==================== ETCD ====================
+  etcd1:
+    image: quay.io/coreos/etcd:v3.5.17
+    container_name: etcd1
+    hostname: etcd1
+    restart: unless-stopped
+    networks:
+      pg_network:
+        ipv4_address: 172.20.0.21
+    command:
+      - etcd
+      - --name=etcd1
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://172.20.0.21:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://172.20.0.21:2380
+      - --initial-cluster=etcd1=http://172.20.0.21:2380,etcd2=http://172.20.0.22:2380,etcd3=http://172.20.0.23:2380
+      - --initial-cluster-token=pg-etcd-cluster
+      - --initial-cluster-state=new
+      - --auto-compaction-mode=revision
+      - --auto-compaction-retention=1000
+      - --quota-backend-bytes=8589934592
+    volumes:
+      - etcd1_data:/etcd-data
+    ports:
+      - "23791:2379"
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health", "--endpoints=http://127.0.0.1:2379"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  etcd2:
+    image: quay.io/coreos/etcd:v3.5.17
+    container_name: etcd2
+    hostname: etcd2
+    restart: unless-stopped
+    networks:
+      pg_network:
+        ipv4_address: 172.20.0.22
+    command:
+      - etcd
+      - --name=etcd2
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://172.20.0.22:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://172.20.0.22:2380
+      - --initial-cluster=etcd1=http://172.20.0.21:2380,etcd2=http://172.20.0.22:2380,etcd3=http://172.20.0.23:2380
+      - --initial-cluster-token=pg-etcd-cluster
+      - --initial-cluster-state=new
+      - --auto-compaction-mode=revision
+      - --auto-compaction-retention=1000
+      - --quota-backend-bytes=8589934592
+    volumes:
+      - etcd2_data:/etcd-data
+    ports:
+      - "23792:2379"
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health", "--endpoints=http://127.0.0.1:2379"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  etcd3:
+    image: quay.io/coreos/etcd:v3.5.17
+    container_name: etcd3
+    hostname: etcd3
+    restart: unless-stopped
+    networks:
+      pg_network:
+        ipv4_address: 172.20.0.23
+    command:
+      - etcd
+      - --name=etcd3
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://172.20.0.23:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://172.20.0.23:2380
+      - --initial-cluster=etcd1=http://172.20.0.21:2380,etcd2=http://172.20.0.22:2380,etcd3=http://172.20.0.23:2380
+      - --initial-cluster-token=pg-etcd-cluster
+      - --initial-cluster-state=new
+      - --auto-compaction-mode=revision
+      - --auto-compaction-retention=1000
+      - --quota-backend-bytes=8589934592
+    volumes:
+      - etcd3_data:/etcd-data
+    ports:
+      - "23793:2379"
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health", "--endpoints=http://127.0.0.1:2379"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ==================== PostgreSQL + Patroni ====================
+  pg-node-1:
+    build:
+      context: ./patroni
+      dockerfile: Dockerfile
+    container_name: pg-node-1
+    hostname: pg-node-1
+    restart: unless-stopped
+    networks:
+      pg_network:
+        ipv4_address: 172.20.0.11
+    depends_on:
+      etcd1:
+        condition: service_healthy
+      etcd2:
+        condition: service_healthy
+      etcd3:
+        condition: service_healthy
+    environment:
+      - CLUSTER_NAME=${CLUSTER_NAME}
+      - PATRONI_SUPERUSER_USERNAME=${PATRONI_SUPERUSER_USERNAME}
+      - PATRONI_SUPERUSER_PASSWORD=${PATRONI_SUPERUSER_PASSWORD}
+      - PATRONI_REPLICATION_USERNAME=${PATRONI_REPLICATION_USERNAME}
+      - PATRONI_REPLICATION_PASSWORD=${PATRONI_REPLICATION_PASSWORD}
+      - PATRONI_REWIND_USERNAME=${PATRONI_REWIND_USERNAME}
+      - PATRONI_REWIND_PASSWORD=${PATRONI_REWIND_PASSWORD}
+    volumes:
+      - pg1_data:/var/lib/postgresql/15/data
+      - ./patroni/patroni1.yml:/etc/patroni/patroni.yml:ro
+    ports:
+      - "5432:5432"
+      - "8081:8008"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8008/master"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  pg-node-2:
+    build:
+      context: ./patroni
+      dockerfile: Dockerfile
+    container_name: pg-node-2
+    hostname: pg-node-2
+    restart: unless-stopped
+    networks:
+      pg_network:
+        ipv4_address: 172.20.0.12
+    depends_on:
+      etcd1:
+        condition: service_healthy
+      etcd2:
+        condition: service_healthy
+      etcd3:
+        condition: service_healthy
+      pg-node-1:
+        condition: service_healthy
+    environment:
+      - CLUSTER_NAME=${CLUSTER_NAME}
+      - PATRONI_SUPERUSER_USERNAME=${PATRONI_SUPERUSER_USERNAME}
+      - PATRONI_SUPERUSER_PASSWORD=${PATRONI_SUPERUSER_PASSWORD}
+      - PATRONI_REPLICATION_USERNAME=${PATRONI_REPLICATION_USERNAME}
+      - PATRONI_REPLICATION_PASSWORD=${PATRONI_REPLICATION_PASSWORD}
+      - PATRONI_REWIND_USERNAME=${PATRONI_REWIND_USERNAME}
+      - PATRONI_REWIND_PASSWORD=${PATRONI_REWIND_PASSWORD}
+    volumes:
+      - pg2_data:/var/lib/postgresql/15/data
+      - ./patroni/patroni2.yml:/etc/patroni/patroni.yml:ro
+    ports:
+      - "5433:5432"
+      - "8082:8008"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8008/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  pg-node-3:
+    build:
+      context: ./patroni
+      dockerfile: Dockerfile
+    container_name: pg-node-3
+    hostname: pg-node-3
+    restart: unless-stopped
+    networks:
+      pg_network:
+        ipv4_address: 172.20.0.13
+    depends_on:
+      etcd1:
+        condition: service_healthy
+      etcd2:
+        condition: service_healthy
+      etcd3:
+        condition: service_healthy
+      pg-node-1:
+        condition: service_healthy
+    environment:
+      - CLUSTER_NAME=${CLUSTER_NAME}
+      - PATRONI_SUPERUSER_USERNAME=${PATRONI_SUPERUSER_USERNAME}
+      - PATRONI_SUPERUSER_PASSWORD=${PATRONI_SUPERUSER_PASSWORD}
+      - PATRONI_REPLICATION_USERNAME=${PATRONI_REPLICATION_USERNAME}
+      - PATRONI_REPLICATION_PASSWORD=${PATRONI_REPLICATION_PASSWORD}
+      - PATRONI_REWIND_USERNAME=${PATRONI_REWIND_USERNAME}
+      - PATRONI_REWIND_PASSWORD=${PATRONI_REWIND_PASSWORD}
+    volumes:
+      - pg3_data:/var/lib/postgresql/15/data
+      - ./patroni/patroni3.yml:/etc/patroni/patroni.yml:ro
+    ports:
+      - "5434:5432"
+      - "8083:8008"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8008/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ==================== HAProxy ====================
+  haproxy-1:
+    image: haproxy:2.8
+    container_name: haproxy-1
+    hostname: haproxy-1
+    restart: unless-stopped
+    networks:
+      pg_network:
+        ipv4_address: 172.20.0.31
+    depends_on:
+      pg-node-1:
+        condition: service_healthy
+      pg-node-2:
+        condition: service_healthy
+      pg-node-3:
+        condition: service_healthy
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "5000:5000"
+      - "5001:5001"
+      - "7000:7000"
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  haproxy-2:
+    image: haproxy:2.8
+    container_name: haproxy-2
+    hostname: haproxy-2
+    restart: unless-stopped
+    networks:
+      pg_network:
+        ipv4_address: 172.20.0.32
+    depends_on:
+      pg-node-1:
+        condition: service_healthy
+      pg-node-2:
+        condition: service_healthy
+      pg-node-3:
+        condition: service_healthy
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "5002:5000"
+      - "5003:5001"
+      - "7001:7000"
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ==================== Keepalived ====================
+  keepalived-master:
+    image: osixia/keepalived:2.0.20
+    container_name: keepalived-master
+    hostname: keepalived-master
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_BROADCAST
+      - NET_RAW
+    volumes:
+      - ./keepalived/keepalived-master.conf:/usr/local/etc/keepalived/keepalived.conf:ro
+      - ./scripts/check_haproxy.sh:/usr/local/etc/keepalived/check_haproxy.sh:ro
+    depends_on:
+      haproxy-1:
+        condition: service_healthy
+
+  keepalived-backup:
+    image: osixia/keepalived:2.0.20
+    container_name: keepalived-backup
+    hostname: keepalived-backup
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_BROADCAST
+      - NET_RAW
+    volumes:
+      - ./keepalived/keepalived-backup.conf:/usr/local/etc/keepalived/keepalived.conf:ro
+      - ./scripts/check_haproxy.sh:/usr/local/etc/keepalived/check_haproxy.sh:ro
+    depends_on:
+      haproxy-2:
+        condition: service_healthy
